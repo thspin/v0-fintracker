@@ -1,30 +1,27 @@
 // app/api/test-connection-pg/route.ts
 
-// ① Deshabilita la verificación de certificados TLS
-//    🛑 NO recomendado para producción con datos sensibles
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 
 export async function GET() {
-  const connectionString = process.env.POSTGRES_URL;
-  if (!connectionString) {
+  const raw = process.env.POSTGRES_URL;
+  if (!raw) {
     return NextResponse.json(
       { error: "Falta la variable de entorno POSTGRES_URL" },
       { status: 500 }
     );
   }
 
-  // ② Import dinámico solo de Pool; el tipo PoolClient viene del import type
+  // ① Construye la URL agregando sslmode=no-verify para omitir la verificación
+  const dbUrl = new URL(raw);
+  dbUrl.searchParams.set("sslmode", "no-verify");
+  const connectionString = dbUrl.toString();
+
+  // ② Carga dinámicamente el pool (para que respete sslmode en la cadena)
   const { Pool } = await import("pg");
-  const pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-  });
+  const pool = new Pool({ connectionString });
 
   let client: PoolClient | undefined;
-
   try {
     client = await pool.connect();
 
@@ -34,24 +31,18 @@ export async function GET() {
         FROM pg_catalog.pg_tables
        WHERE schemaname = 'public';
     `);
-    const existingTables = rows.map(r => r.tablename);
+    const existing = rows.map(r => r.tablename);
 
-    const requiredTables = [
-      "users",
-      "transactions",
-      "installments",
-      "services",
-      "service_history",
-      "savings_goals",
-      "savings_deposits",
+    // 2) Definir y crear tablas faltantes
+    const required = [
+      "users", "transactions", "installments",
+      "services", "service_history",
+      "savings_goals", "savings_deposits"
     ];
-    const missingTables = requiredTables.filter(t => !existingTables.includes(t));
-
-    // 2) Crear tablas que falten
-    if (missingTables.length > 0) {
+    const missing = required.filter(t => !existing.includes(t));
+    if (missing.length) {
       await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
-
-      if (missingTables.includes("users")) {
+      if (missing.includes("users")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -63,7 +54,7 @@ export async function GET() {
           );
         `);
       }
-      if (missingTables.includes("transactions")) {
+      if (missing.includes("transactions")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS transactions (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -83,7 +74,7 @@ export async function GET() {
           );
         `);
       }
-      if (missingTables.includes("installments")) {
+      if (missing.includes("installments")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS installments (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -97,7 +88,7 @@ export async function GET() {
           );
         `);
       }
-      if (missingTables.includes("services")) {
+      if (missing.includes("services")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS services (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -113,7 +104,7 @@ export async function GET() {
           );
         `);
       }
-      if (missingTables.includes("service_history")) {
+      if (missing.includes("service_history")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS service_history (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -125,7 +116,7 @@ export async function GET() {
           );
         `);
       }
-      if (missingTables.includes("savings_goals")) {
+      if (missing.includes("savings_goals")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS savings_goals (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -141,7 +132,7 @@ export async function GET() {
           );
         `);
       }
-      if (missingTables.includes("savings_deposits")) {
+      if (missing.includes("savings_deposits")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS savings_deposits (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -154,7 +145,7 @@ export async function GET() {
         `);
       }
 
-      // Índices
+      // Índices y triggers...
       await client.query(`
         CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
         CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -162,57 +153,50 @@ export async function GET() {
         CREATE INDEX IF NOT EXISTS idx_services_user_id ON services(user_id);
         CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id);
       `);
-
-      // Función y triggers para timestamps
       await client.query(`
         CREATE OR REPLACE FUNCTION update_updated_at_column()
-          RETURNS TRIGGER AS $$
-        BEGIN
-          NEW.updated_at = NOW();
-          RETURN NEW;
+        RETURNS TRIGGER AS $$
+        BEGIN NEW.updated_at = NOW(); RETURN NEW;
         END; $$ LANGUAGE plpgsql;
       `);
-
-      const triggers: Record<string,string> = {
+      for (const [table, trig] of Object.entries({
         users: "update_users_updated_at",
         transactions: "update_transactions_updated_at",
         services: "update_services_updated_at",
-        savings_goals: "update_savings_goals_updated_at",
-      };
-      for (const [table, triggerName] of Object.entries(triggers)) {
+        savings_goals: "update_savings_goals_updated_at"
+      })) {
         await client.query(`
-          DROP TRIGGER IF EXISTS ${triggerName} ON ${table};
-          CREATE TRIGGER ${triggerName}
+          DROP TRIGGER IF EXISTS ${trig} ON ${table};
+          CREATE TRIGGER ${trig}
             BEFORE UPDATE ON ${table}
             FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
         `);
       }
     }
 
-    // 3) Re-listar tablas finales
+    // 3) Re-listar y devolver
     const { rows: finalRows } = await client.query<{ tablename: string }>(`
       SELECT tablename
         FROM pg_catalog.pg_tables
        WHERE schemaname = 'public';
     `);
-    const allTables = finalRows.map(r => r.tablename);
+    const tables = finalRows.map(r => r.tablename);
 
     return NextResponse.json({
       status: "success",
-      message: missingTables.length > 0
+      message: missing.length
         ? "Conexión exitosa y tablas creadas correctamente"
         : "Conexión exitosa a la base de datos PostgreSQL",
-      tables: allTables,
+      tables,
     });
-
-  } catch (err) {
-    console.error("Error al probar la conexión PostgreSQL:", err);
+  } catch (e) {
+    console.error(e);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Error desconocido" },
+      { error: e instanceof Error ? e.message : "Error desconocido" },
       { status: 500 }
     );
   } finally {
-    if (client) client.release();
-    await pool.end();
+    client?.release();
+    pool.end();
   }
 }
