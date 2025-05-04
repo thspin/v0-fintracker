@@ -1,12 +1,11 @@
 // app/api/test-connection-pg/route.ts
 
-// ① Deshabilita la verificación de certificados TLS (solo para entornos de confianza)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
 import { NextResponse } from "next/server";
-import { Pool, PoolClient } from "pg";
 
 export async function GET() {
+  // ① Deshabilita la verificación de certificados TLS (antes de cargar pg)
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
   const connectionString = process.env.POSTGRES_URL;
   if (!connectionString) {
     return NextResponse.json(
@@ -15,22 +14,24 @@ export async function GET() {
     );
   }
 
-  // ② Crea el pool con ssl false (la verificación ya está desactivada arriba)
+  // ② Import dinámico de pg para que respete NODE_TLS_REJECT_UNAUTHORIZED
+  const { Pool, type PoolClient } = await import("pg");
   const pool = new Pool({
     connectionString,
-    ssl: false,
+    ssl: {
+      rejectUnauthorized: false,
+    },
   });
 
   let client: PoolClient | undefined;
-
   try {
     client = await pool.connect();
 
-    // 1) Obtén las tablas existentes
+    // 1) Listar tablas existentes
     const { rows } = await client.query<{ tablename: string }>(`
       SELECT tablename
-      FROM pg_catalog.pg_tables
-      WHERE schemaname = 'public';
+        FROM pg_catalog.pg_tables
+       WHERE schemaname = 'public';
     `);
     const existingTables = rows.map(r => r.tablename);
 
@@ -45,7 +46,7 @@ export async function GET() {
     ];
     const missingTables = requiredTables.filter(t => !existingTables.includes(t));
 
-    // 2) Si faltan tablas, créalas
+    // 2) Si faltan tablas, crearlas
     if (missingTables.length > 0) {
       await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
 
@@ -158,7 +159,7 @@ export async function GET() {
         `);
       }
 
-      // Índices y triggers (igual que antes) …
+      // índices
       await client.query(`
         CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
         CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -167,6 +168,7 @@ export async function GET() {
         CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id);
       `);
 
+      // función y triggers
       await client.query(`
         CREATE OR REPLACE FUNCTION update_updated_at_column()
         RETURNS TRIGGER AS $$
@@ -174,7 +176,7 @@ export async function GET() {
         END; $$ LANGUAGE plpgsql;
       `);
 
-      const triggers = {
+      const triggers: Record<string, string> = {
         users: "update_users_updated_at",
         transactions: "update_transactions_updated_at",
         services: "update_services_updated_at",
@@ -190,11 +192,11 @@ export async function GET() {
       }
     }
 
-    // 3) Re-listar tablas
+    // 3) Relistar todas las tablas
     const { rows: finalRows } = await client.query<{ tablename: string }>(`
       SELECT tablename
-      FROM pg_catalog.pg_tables
-      WHERE schemaname = 'public';
+        FROM pg_catalog.pg_tables
+       WHERE schemaname = 'public';
     `);
     const allTables = finalRows.map(r => r.tablename);
 
@@ -212,7 +214,7 @@ export async function GET() {
       { status: 500 }
     );
   } finally {
-    if (client) client.release();
+    if (client) client?.release();
     await pool.end();
   }
 }
