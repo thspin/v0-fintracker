@@ -1,11 +1,13 @@
 // app/api/test-connection-pg/route.ts
 
+// ① Deshabilita la verificación de certificados TLS
+//    🛑 NO recomendado para producción con datos sensibles
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 import { NextResponse } from "next/server";
+import type { PoolClient } from "pg";
 
 export async function GET() {
-  // ① Deshabilita la verificación de certificados TLS (antes de cargar pg)
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
   const connectionString = process.env.POSTGRES_URL;
   if (!connectionString) {
     return NextResponse.json(
@@ -14,16 +16,15 @@ export async function GET() {
     );
   }
 
-  // ② Import dinámico de pg para que respete NODE_TLS_REJECT_UNAUTHORIZED
-  const { Pool, type PoolClient } = await import("pg");
+  // ② Import dinámico solo de Pool; el tipo PoolClient viene del import type
+  const { Pool } = await import("pg");
   const pool = new Pool({
     connectionString,
-    ssl: {
-      rejectUnauthorized: false,
-    },
+    ssl: { rejectUnauthorized: false },
   });
 
   let client: PoolClient | undefined;
+
   try {
     client = await pool.connect();
 
@@ -46,7 +47,7 @@ export async function GET() {
     ];
     const missingTables = requiredTables.filter(t => !existingTables.includes(t));
 
-    // 2) Si faltan tablas, crearlas
+    // 2) Crear tablas que falten
     if (missingTables.length > 0) {
       await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
 
@@ -62,7 +63,6 @@ export async function GET() {
           );
         `);
       }
-
       if (missingTables.includes("transactions")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS transactions (
@@ -83,7 +83,6 @@ export async function GET() {
           );
         `);
       }
-
       if (missingTables.includes("installments")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS installments (
@@ -98,7 +97,6 @@ export async function GET() {
           );
         `);
       }
-
       if (missingTables.includes("services")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS services (
@@ -115,7 +113,6 @@ export async function GET() {
           );
         `);
       }
-
       if (missingTables.includes("service_history")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS service_history (
@@ -128,7 +125,6 @@ export async function GET() {
           );
         `);
       }
-
       if (missingTables.includes("savings_goals")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS savings_goals (
@@ -145,7 +141,6 @@ export async function GET() {
           );
         `);
       }
-
       if (missingTables.includes("savings_deposits")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS savings_deposits (
@@ -159,7 +154,7 @@ export async function GET() {
         `);
       }
 
-      // índices
+      // Índices
       await client.query(`
         CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
         CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -168,31 +163,33 @@ export async function GET() {
         CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id);
       `);
 
-      // función y triggers
+      // Función y triggers para timestamps
       await client.query(`
         CREATE OR REPLACE FUNCTION update_updated_at_column()
-        RETURNS TRIGGER AS $$
-        BEGIN NEW.updated_at = NOW(); RETURN NEW;
+          RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
         END; $$ LANGUAGE plpgsql;
       `);
 
-      const triggers: Record<string, string> = {
+      const triggers: Record<string,string> = {
         users: "update_users_updated_at",
         transactions: "update_transactions_updated_at",
         services: "update_services_updated_at",
         savings_goals: "update_savings_goals_updated_at",
       };
-      for (const [table, name] of Object.entries(triggers)) {
+      for (const [table, triggerName] of Object.entries(triggers)) {
         await client.query(`
-          DROP TRIGGER IF EXISTS ${name} ON ${table};
-          CREATE TRIGGER ${name}
+          DROP TRIGGER IF EXISTS ${triggerName} ON ${table};
+          CREATE TRIGGER ${triggerName}
             BEFORE UPDATE ON ${table}
             FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
         `);
       }
     }
 
-    // 3) Relistar todas las tablas
+    // 3) Re-listar tablas finales
     const { rows: finalRows } = await client.query<{ tablename: string }>(`
       SELECT tablename
         FROM pg_catalog.pg_tables
@@ -207,6 +204,7 @@ export async function GET() {
         : "Conexión exitosa a la base de datos PostgreSQL",
       tables: allTables,
     });
+
   } catch (err) {
     console.error("Error al probar la conexión PostgreSQL:", err);
     return NextResponse.json(
@@ -214,7 +212,7 @@ export async function GET() {
       { status: 500 }
     );
   } finally {
-    if (client) client?.release();
+    if (client) client.release();
     await pool.end();
   }
 }
