@@ -12,9 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PiggyBank, Eye, EyeOff, AlertCircle } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
 
 export default function LoginPage() {
-  const { login, register, loading, error } = useAuth()
+  const { login, register, loginWithGoogle, loading, error } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
 
   const [loginData, setLoginData] = useState({
@@ -47,6 +48,10 @@ export default function LoginPage() {
 
     setRegisterError(null)
     await register(registerData.name, registerData.email, registerData.password)
+  }
+
+  const handleGoogleLogin = async () => {
+    await loginWithGoogle()
   }
 
   return (
@@ -129,6 +134,31 @@ export default function LoginPage() {
                     {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
                   </Button>
                 </form>
+
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator className="w-full" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-background px-2 text-xs text-muted-foreground">O continúa con</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M15.545 6.558a9.42 9.42 0 0 1 .139 1.626c0 2.434-.87 4.492-2.384 5.885h.002C11.978 15.292 10.158 16 8 16A8 8 0 1 1 8 0a7.689 7.689 0 0 1 5.352 2.082l-2.284 2.284A4.347 4.347 0 0 0 8 3.166c-2.087 0-3.86 1.408-4.492 3.304a4.792 4.792 0 0 0 0 3.063h.003c.635 1.893 2.405 3.301 4.492 3.301 1.078 0 2.004-.276 2.722-.764h-.003a3.702 3.702 0 0 0 1.599-2.431H8v-3.08h7.545z"
+                      fill="#4285F4"
+                    />
+                  </svg>
+                  Iniciar sesión con Google
+                </Button>
               </CardContent>
               <CardFooter className="flex justify-center">
                 <div className="text-sm text-muted-foreground">
@@ -222,6 +252,31 @@ export default function LoginPage() {
                     {loading ? "Creando cuenta..." : "Crear Cuenta"}
                   </Button>
                 </form>
+
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator className="w-full" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-background px-2 text-xs text-muted-foreground">O continúa con</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M15.545 6.558a9.42 9.42 0 0 1 .139 1.626c0 2.434-.87 4.492-2.384 5.885h.002C11.978 15.292 10.158 16 8 16A8 8 0 1 1 8 0a7.689 7.689 0 0 1 5.352 2.082l-2.284 2.284A4.347 4.347 0 0 0 8 3.166c-2.087 0-3.86 1.408-4.492 3.304a4.792 4.792 0 0 0 0 3.063h.003c.635 1.893 2.405 3.301 4.492 3.301 1.078 0 2.004-.276 2.722-.764h-.003a3.702 3.702 0 0 0 1.599-2.431H8v-3.08h7.545z"
+                      fill="#4285F4"
+                    />
+                  </svg>
+                  Registrarse con Google
+                </Button>
               </CardContent>
               <CardFooter className="flex justify-center">
                 <div className="text-sm text-muted-foreground">

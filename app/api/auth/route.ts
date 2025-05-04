@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Error en autenticación",
-        stack: error instanceof Error ? error.stack : undefined,
+        stack: process.env.NODE_ENV === "development" ? (error instanceof Error ? error.stack : undefined) : undefined,
       },
       { status: 500 },
     )
@@ -50,9 +50,9 @@ async function handleRegister(body: any, supabase: any) {
       .from("users")
       .select("*")
       .eq("email", email)
-      .single()
+      .maybeSingle()
 
-    if (checkError && checkError.code !== "PGRST116") {
+    if (checkError) {
       console.error("Error al verificar usuario existente:", checkError)
       return NextResponse.json({ error: "Error al verificar usuario existente" }, { status: 500 })
     }
@@ -72,6 +72,7 @@ async function handleRegister(body: any, supabase: any) {
           name,
           email,
           password: hashedPassword,
+          provider: "email",
         },
       ])
       .select()
@@ -95,7 +96,7 @@ async function handleRegister(body: any, supabase: any) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Error en registro",
-        stack: error instanceof Error ? error.stack : undefined,
+        stack: process.env.NODE_ENV === "development" ? (error instanceof Error ? error.stack : undefined) : undefined,
       },
       { status: 500 },
     )
@@ -112,10 +113,20 @@ async function handleLogin(body: any, supabase: any) {
     }
 
     // Buscar el usuario
-    const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
+    const { data: user, error } = await supabase.from("users").select("*").eq("email", email).maybeSingle()
 
-    if (error || !user) {
+    if (error) {
+      console.error("Error al buscar usuario:", error)
+      return NextResponse.json({ error: "Error al verificar credenciales" }, { status: 500 })
+    }
+
+    if (!user) {
       return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 })
+    }
+
+    // Si el usuario se registró con Google, no debería tener contraseña
+    if (user.provider === "google" && !user.password) {
+      return NextResponse.json({ error: "Por favor, inicia sesión con Google" }, { status: 401 })
     }
 
     // Verificar la contraseña
@@ -135,7 +146,7 @@ async function handleLogin(body: any, supabase: any) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Error en login",
-        stack: error instanceof Error ? error.stack : undefined,
+        stack: process.env.NODE_ENV === "development" ? (error instanceof Error ? error.stack : undefined) : undefined,
       },
       { status: 500 },
     )

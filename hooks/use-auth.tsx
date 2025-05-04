@@ -7,6 +7,8 @@ type User = {
   id: string
   name: string
   email: string
+  picture?: string
+  provider?: string
 }
 
 type AuthContextType = {
@@ -14,6 +16,7 @@ type AuthContextType = {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (name: string, email: string, password: string) => Promise<void>
+  loginWithGoogle: () => Promise<void>
   logout: () => void
   error: string | null
 }
@@ -97,6 +100,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const loginWithGoogle = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Redirigir a la ruta de autenticación de Google
+      window.location.href = "/api/auth/google"
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al iniciar sesión con Google")
+      setLoading(false)
+    }
+  }
+
   const logout = () => {
     setUser(null)
     localStorage.removeItem("user")
@@ -104,7 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, error }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, error }}>
+      {children}
+    </AuthContext.Provider>
   )
 }
 
