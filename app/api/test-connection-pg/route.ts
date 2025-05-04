@@ -1,202 +1,48 @@
 // app/api/test-connection-pg/route.ts
 
-import { NextResponse } from "next/server";
-import type { PoolClient } from "pg";
+import { NextResponse } from "next/server"
 
 export async function GET() {
-  const raw = process.env.POSTGRES_URL;
-  if (!raw) {
-    return NextResponse.json(
-      { error: "Falta la variable de entorno POSTGRES_URL" },
-      { status: 500 }
-    );
-  }
-
-  // ① Construye la URL agregando sslmode=no-verify para omitir la verificación
-  const dbUrl = new URL(raw);
-  dbUrl.searchParams.set("sslmode", "no-verify");
-  const connectionString = dbUrl.toString();
-
-  // ② Carga dinámicamente el pool (para que respete sslmode en la cadena)
-  const { Pool } = await import("pg");
-  const pool = new Pool({ connectionString });
-
-  let client: PoolClient | undefined;
   try {
-    client = await pool.connect();
+    // Obtener la URL de conexión de PostgreSQL
+    const connectionString = process.env.POSTGRES_URL
 
-    // 1) Listar tablas existentes
-    const { rows } = await client.query<{ tablename: string }>(`
-      SELECT tablename
-        FROM pg_catalog.pg_tables
-       WHERE schemaname = 'public';
-    `);
-    const existing = rows.map(r => r.tablename);
-
-    // 2) Definir y crear tablas faltantes
-    const required = [
-      "users", "transactions", "installments",
-      "services", "service_history",
-      "savings_goals", "savings_deposits"
-    ];
-    const missing = required.filter(t => !existing.includes(t));
-    if (missing.length) {
-      await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
-      if (missing.includes("users")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS users (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            name VARCHAR(255) NOT NULL,
-            email VARCHAR(255) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-      if (missing.includes("transactions")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS transactions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-            type VARCHAR(50) NOT NULL CHECK (type IN ('income','expense','credit')),
-            amount DECIMAL(12,2) NOT NULL,
-            currency VARCHAR(10) NOT NULL DEFAULT 'ARS',
-            category VARCHAR(100) NOT NULL,
-            date DATE NOT NULL,
-            payment_method VARCHAR(100) NOT NULL,
-            description TEXT,
-            interest DECIMAL(12,2),
-            installments INTEGER,
-            installment_type VARCHAR(50) CHECK (installment_type IN ('equal','custom')),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-      if (missing.includes("installments")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS installments (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            transaction_id UUID REFERENCES transactions(id) ON DELETE CASCADE,
-            installment_number INTEGER NOT NULL,
-            amount DECIMAL(12,2) NOT NULL,
-            due_date DATE NOT NULL,
-            status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','overdue')),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-      if (missing.includes("services")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS services (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-            name VARCHAR(255) NOT NULL,
-            amount DECIMAL(12,2) NOT NULL,
-            due_day INTEGER NOT NULL CHECK (due_day BETWEEN 1 AND 31),
-            category VARCHAR(100) NOT NULL,
-            is_automatic BOOLEAN NOT NULL DEFAULT FALSE,
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-      if (missing.includes("service_history")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS service_history (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            service_id UUID REFERENCES services(id) ON DELETE CASCADE,
-            amount DECIMAL(12,2) NOT NULL,
-            date DATE NOT NULL,
-            status VARCHAR(50) NOT NULL DEFAULT 'paid' CHECK (status IN ('pending','paid','overdue')),
-            created_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-      if (missing.includes("savings_goals")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS savings_goals (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-            title VARCHAR(255) NOT NULL,
-            target_amount DECIMAL(12,2) NOT NULL,
-            current_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
-            deadline DATE,
-            category VARCHAR(100) NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-      if (missing.includes("savings_deposits")) {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS savings_deposits (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            goal_id UUID REFERENCES savings_goals(id) ON DELETE CASCADE,
-            amount DECIMAL(12,2) NOT NULL,
-            date DATE NOT NULL,
-            description TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-      }
-
-      // Índices y triggers...
-      await client.query(`
-        CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
-        CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
-        CREATE INDEX IF NOT EXISTS idx_services_user_id ON services(user_id);
-        CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id);
-      `);
-      await client.query(`
-        CREATE OR REPLACE FUNCTION update_updated_at_column()
-        RETURNS TRIGGER AS $$
-        BEGIN NEW.updated_at = NOW(); RETURN NEW;
-        END; $$ LANGUAGE plpgsql;
-      `);
-      for (const [table, trig] of Object.entries({
-        users: "update_users_updated_at",
-        transactions: "update_transactions_updated_at",
-        services: "update_services_updated_at",
-        savings_goals: "update_savings_goals_updated_at"
-      })) {
-        await client.query(`
-          DROP TRIGGER IF EXISTS ${trig} ON ${table};
-          CREATE TRIGGER ${trig}
-            BEFORE UPDATE ON ${table}
-            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-        `);
-      }
+    if (!connectionString) {
+      return NextResponse.json({ error: "Falta la variable de entorno POSTGRES_URL" }, { status: 500 })
     }
 
-    // 3) Re-listar y devolver
-    const { rows: finalRows } = await client.query<{ tablename: string }>(`
-      SELECT tablename
-        FROM pg_catalog.pg_tables
-       WHERE schemaname = 'public';
-    `);
-    const tables = finalRows.map(r => r.tablename);
+    // Importar dinámicamente pg para evitar problemas con SSR
+    const { Pool } = await import("pg")
 
-    return NextResponse.json({
-      status: "success",
-      message: missing.length
-        ? "Conexión exitosa y tablas creadas correctamente"
-        : "Conexión exitosa a la base de datos PostgreSQL",
-      tables,
-    });
-  } catch (e) {
-    console.error(e);
+    // Crear un pool de conexiones con SSL desactivado para evitar problemas de certificado
+    const pool = new Pool({
+      connectionString,
+      ssl: {
+        rejectUnauthorized: false, // Esto permite conexiones con certificados autofirmados
+      },
+    })
+
+    try {
+      // Probar la conexión con una consulta simple
+      const result = await pool.query("SELECT NOW() as current_time")
+
+      return NextResponse.json({
+        status: "success",
+        message: "Conexión exitosa a la base de datos PostgreSQL",
+        timestamp: result.rows[0].current_time,
+      })
+    } finally {
+      // Cerrar el pool
+      await pool.end()
+    }
+  } catch (error) {
+    console.error("Error al probar la conexión PostgreSQL:", error)
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error desconocido" },
-      { status: 500 }
-    );
-  } finally {
-    client?.release();
-    pool.end();
+      {
+        error: error instanceof Error ? error.message : "Error desconocido",
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      { status: 500 },
+    )
   }
 }

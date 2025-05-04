@@ -60,8 +60,8 @@
     "zod": "latest",
     "pg-native": "latest",
     "@supabase/supabase-js": "latest",
-    "bcryptjs": "latest",
-    "pg": "latest"
+    "pg": "latest",
+    "bcryptjs": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",
