@@ -26,9 +26,10 @@ export async function GET() {
     })
 
     const { data: tables, error } = await supabase
-      .from("pg_tables")
-      .select("tablename")
-      .eq("schemaname", "public")
+        .from("pg_catalog.pg_tables")
+        .select("tablename")
+        .eq("schemaname", "public")
+)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -50,7 +51,7 @@ export async function GET() {
       await createTables(supabase)
 
       const { data: updatedTables, error: updateError } = await supabase
-        .from("pg_tables")
+        .from("pg_catalog.pg_tables")
         .select("tablename")
         .eq("schemaname", "public")
 
