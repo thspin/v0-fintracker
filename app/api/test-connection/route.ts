@@ -29,7 +29,6 @@ export async function GET() {
         .from("pg_catalog.pg_tables")
         .select("tablename")
         .eq("schemaname", "public")
-)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
