@@ -1,5 +1,8 @@
 // app/api/test-connection-pg/route.ts
 
+// ① Deshabilita la verificación de certificados TLS (solo para entornos de confianza)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 import { NextResponse } from "next/server";
 import { Pool, PoolClient } from "pg";
 
@@ -12,19 +15,19 @@ export async function GET() {
     );
   }
 
+  // ② Crea el pool con ssl false (la verificación ya está desactivada arriba)
   const pool = new Pool({
     connectionString,
-    ssl: {
-      rejectUnauthorized: false,
-    },
+    ssl: false,
   });
+
   let client: PoolClient | undefined;
 
   try {
     client = await pool.connect();
 
     // 1) Obtén las tablas existentes
-    const { rows } = await client.query< { tablename: string } >(`
+    const { rows } = await client.query<{ tablename: string }>(`
       SELECT tablename
       FROM pg_catalog.pg_tables
       WHERE schemaname = 'public';
@@ -44,10 +47,8 @@ export async function GET() {
 
     // 2) Si faltan tablas, créalas
     if (missingTables.length > 0) {
-      // extensión para UUID
       await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
 
-      // users
       if (missingTables.includes("users")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS users (
@@ -61,13 +62,12 @@ export async function GET() {
         `);
       }
 
-      // transactions
       if (missingTables.includes("transactions")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS transactions (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-            type VARCHAR(50) NOT NULL CHECK (type IN ('income', 'expense', 'credit')),
+            type VARCHAR(50) NOT NULL CHECK (type IN ('income','expense','credit')),
             amount DECIMAL(12,2) NOT NULL,
             currency VARCHAR(10) NOT NULL DEFAULT 'ARS',
             category VARCHAR(100) NOT NULL,
@@ -83,7 +83,6 @@ export async function GET() {
         `);
       }
 
-      // installments
       if (missingTables.includes("installments")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS installments (
@@ -99,7 +98,6 @@ export async function GET() {
         `);
       }
 
-      // services
       if (missingTables.includes("services")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS services (
@@ -117,7 +115,6 @@ export async function GET() {
         `);
       }
 
-      // service_history
       if (missingTables.includes("service_history")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS service_history (
@@ -131,7 +128,6 @@ export async function GET() {
         `);
       }
 
-      // savings_goals
       if (missingTables.includes("savings_goals")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS savings_goals (
@@ -149,7 +145,6 @@ export async function GET() {
         `);
       }
 
-      // savings_deposits
       if (missingTables.includes("savings_deposits")) {
         await client.query(`
           CREATE TABLE IF NOT EXISTS savings_deposits (
@@ -163,7 +158,7 @@ export async function GET() {
         `);
       }
 
-      // índices
+      // Índices y triggers (igual que antes) …
       await client.query(`
         CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
         CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -172,36 +167,31 @@ export async function GET() {
         CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id);
       `);
 
-      // trigger helper
       await client.query(`
         CREATE OR REPLACE FUNCTION update_updated_at_column()
         RETURNS TRIGGER AS $$
-        BEGIN
-          NEW.updated_at = NOW();
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
+        BEGIN NEW.updated_at = NOW(); RETURN NEW;
+        END; $$ LANGUAGE plpgsql;
       `);
 
-      // triggers
-      const triggerMap: Record<string,string> = {
+      const triggers = {
         users: "update_users_updated_at",
         transactions: "update_transactions_updated_at",
         services: "update_services_updated_at",
         savings_goals: "update_savings_goals_updated_at",
       };
-      for (const [table, triggerName] of Object.entries(triggerMap)) {
+      for (const [table, name] of Object.entries(triggers)) {
         await client.query(`
-          DROP TRIGGER IF EXISTS ${triggerName} ON ${table};
-          CREATE TRIGGER ${triggerName}
-          BEFORE UPDATE ON ${table}
-          FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+          DROP TRIGGER IF EXISTS ${name} ON ${table};
+          CREATE TRIGGER ${name}
+            BEFORE UPDATE ON ${table}
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
         `);
       }
     }
 
-    // 3) Re-listar tablas tras posible creación
-    const { rows: finalRows } = await client.query< { tablename: string } >(`
+    // 3) Re-listar tablas
+    const { rows: finalRows } = await client.query<{ tablename: string }>(`
       SELECT tablename
       FROM pg_catalog.pg_tables
       WHERE schemaname = 'public';
@@ -210,18 +200,15 @@ export async function GET() {
 
     return NextResponse.json({
       status: "success",
-      message:
-        missingTables.length > 0
-          ? "Conexión exitosa y tablas creadas correctamente"
-          : "Conexión exitosa a la base de datos PostgreSQL",
+      message: missingTables.length > 0
+        ? "Conexión exitosa y tablas creadas correctamente"
+        : "Conexión exitosa a la base de datos PostgreSQL",
       tables: allTables,
     });
   } catch (err) {
     console.error("Error al probar la conexión PostgreSQL:", err);
     return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : "Error desconocido",
-      },
+      { error: err instanceof Error ? err.message : "Error desconocido" },
       { status: 500 }
     );
   } finally {
