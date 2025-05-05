@@ -2,10 +2,23 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
-import { CheckCircle, XCircle, AlertCircle, Database, RefreshCw } from "lucide-react"
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Database,
+  RefreshCw,
+} from "lucide-react"
 
 export default function SetupPage() {
   const [loading, setLoading] = useState(true)
@@ -37,12 +50,15 @@ export default function SetupPage() {
     setError(null)
     setSuccess(null)
     try {
-      const response = await fetch("/api/setup-db")
+      const response = await fetch("/api/db-status", {
+        method: "POST",
+      })
       const data = await response.json()
-      if (data.error) {
-        setError(data.error)
+      if (data.status === "error") {
+        setError(data.message || data.error)
       } else {
-        setSuccess("Tablas creadas correctamente")
+        setSuccess(data.message)
+        // vuelve a consultar el estado para ver tablas en verde
         await checkDbStatus()
       }
     } catch (err) {
@@ -59,7 +75,9 @@ export default function SetupPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-6">Configuración de la Base de Datos</h1>
+      <h1 className="text-3xl font-bold mb-6">
+        Configuración de la Base de Datos
+      </h1>
 
       {error && (
         <Alert variant="destructive" className="mb-6">
@@ -73,7 +91,9 @@ export default function SetupPage() {
         <Alert className="mb-6 bg-green-50 border-green-200">
           <CheckCircle className="h-4 w-4 text-green-500" />
           <AlertTitle className="text-green-700">Éxito</AlertTitle>
-          <AlertDescription className="text-green-600">{success}</AlertDescription>
+          <AlertDescription className="text-green-600">
+            {success}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -83,7 +103,9 @@ export default function SetupPage() {
             <Database className="h-5 w-5" />
             Estado de la Base de Datos
           </CardTitle>
-          <CardDescription>Verifica la conexión y las tablas necesarias</CardDescription>
+          <CardDescription>
+            Verifica la conexión y las tablas necesarias
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -92,6 +114,7 @@ export default function SetupPage() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Conexión */}
               <div>
                 <h3 className="text-lg font-medium mb-2">Conexión</h3>
                 <div className="flex items-center gap-2">
@@ -111,49 +134,68 @@ export default function SetupPage() {
 
               <Separator />
 
+              {/* Variables de Entorno */}
               <div>
-                <h3 className="text-lg font-medium mb-2">Variables de Entorno</h3>
+                <h3 className="text-lg font-medium mb-2">
+                  Variables de Entorno
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {dbStatus?.env &&
-                    Object.entries(dbStatus.env).map(([key, value]: [string, any]) => (
-                      <div key={key} className="flex items-center gap-2">
-                        {value ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                        <span>{key}</span>
-                      </div>
-                    ))}
+                    Object.entries(dbStatus.env).map(
+                      ([key, value]: [string, any]) => (
+                        <div key={key} className="flex items-center gap-2">
+                          {value ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-500" />
+                          )}
+                          <span>{key}</span>
+                        </div>
+                      )
+                    )}
                 </div>
               </div>
 
               <Separator />
 
+              {/* Tablas */}
               <div>
                 <h3 className="text-lg font-medium mb-2">Tablas</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {dbStatus?.tables &&
-                    Object.entries(dbStatus.tables).map(([table, status]: [string, any]) => (
-                      <div key={table} className="flex items-center gap-2">
-                        {status.exists ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                        <span>
-                          {table} {status.exists && `(${status.count} registros)`}
-                        </span>
-                      </div>
-                    ))}
+                    Object.entries(dbStatus.tables).map(
+                      ([table, status]: [string, any]) => (
+                        <div key={table} className="flex items-center gap-2">
+                          {status.exists ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-500" />
+                          )}
+                          <span>
+                            {table}{" "}
+                            {status.exists && `(${status.count} registro${
+                              status.count !== 1 ? "s" : ""
+                            })`}
+                          </span>
+                        </div>
+                      )
+                    )}
                 </div>
               </div>
             </div>
           )}
         </CardContent>
         <CardFooter className="flex justify-between">
-          <Button variant="outline" onClick={checkDbStatus} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          <Button
+            variant="outline"
+            onClick={checkDbStatus}
+            disabled={loading || creating}
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${
+                loading ? "animate-spin" : ""
+              }`}
+            />
             Actualizar
           </Button>
           <Button onClick={createTables} disabled={creating || loading}>
@@ -162,17 +204,19 @@ export default function SetupPage() {
         </CardFooter>
       </Card>
 
+      {/* SQL para Crear Tablas */}
       <Card>
         <CardHeader>
           <CardTitle>SQL para Crear Tablas</CardTitle>
           <CardDescription>
-            Si la creación automática falla, puedes ejecutar este SQL en la consola de Supabase
+            Si la creación automática falla, puedes ejecutar este SQL en la
+            consola de Supabase
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="bg-gray-100 p-4 rounded-md overflow-auto max-h-96">
             <pre className="text-sm whitespace-pre-wrap">
-              {`-- Crear tabla de usuarios si no existe
+{`-- Crear tabla de usuarios si no existe
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
@@ -236,11 +280,6 @@ CREATE TABLE IF NOT EXISTS installments (
             </pre>
           </div>
         </CardContent>
-        <CardFooter>
-          <Button variant="outline" onClick={() => window.open("/api/setup-db/sql", "_blank")}>
-            Ver SQL Completo
-          </Button>
-        </CardFooter>
       </Card>
     </div>
   )
