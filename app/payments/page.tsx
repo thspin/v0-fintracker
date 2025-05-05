@@ -1,7 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CreditCard, DollarSign, AlertCircle } from "lucide-react"
+import { PaymentCard } from "@/components/payment-card"
 
 export default function PaymentsPage() {
   return (
@@ -173,52 +172,6 @@ export default function PaymentsPage() {
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-function PaymentCard({
-  title,
-  description,
-  amount,
-  type,
-  urgent,
-}: {
-  title: string
-  description: string
-  amount: string
-  type: "credit-card" | "loan" | "service" | "rent" | "insurance"
-  urgent: boolean
-}) {
-  return (
-    <Card className={urgent ? "border-red-300" : ""}>
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-start">
-          <div className="space-y-1">
-            <CardTitle className="text-base">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-          {type === "credit-card" && <CreditCard className="h-5 w-5 text-blue-500" />}
-          {type === "loan" && <DollarSign className="h-5 w-5 text-purple-500" />}
-          {type === "service" && <AlertCircle className="h-5 w-5 text-amber-500" />}
-          {type === "rent" && <AlertCircle className="h-5 w-5 text-green-500" />}
-          {type === "insurance" && <AlertCircle className="h-5 w-5 text-red-500" />}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex justify-between items-center">
-          <p className="text-lg font-bold">{amount}</p>
-          <Button size="sm" className="transition-all hover:scale-105">
-            Pagar
-          </Button>
-        </div>
-        {urgent && (
-          <div className="mt-2 text-xs text-red-500 flex items-center">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Vencimiento próximo
-          </div>
-        )}
-      </CardContent>
-    </Card>
   )
 }
 

@@ -30,16 +30,17 @@ export function Header() {
     const updateDateTime = () => {
       const now = new Date()
 
-      // Formato de hora
+      // Formato de hora en 24h
       const time = now.toLocaleTimeString("es-AR", {
         hour: "2-digit",
         minute: "2-digit",
+        hour12: false,
       })
 
-      // Formato de fecha
-      const date = now.toLocaleDateString("es-AR", {
-        day: "2-digit",
+      // Formato de fecha MM/DD/AAAA
+      const date = now.toLocaleDateString("en-US", {
         month: "2-digit",
+        day: "2-digit",
         year: "numeric",
       })
 
@@ -102,7 +103,7 @@ export function Header() {
           {!isMobile && (
             <div className="text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
-                {dateTime.time} • {dateTime.date} • Sem {dateTime.week} • T{dateTime.quarter}
+                {dateTime.time} • {dateTime.date} • W{dateTime.week} • Q{dateTime.quarter}
               </div>
             </div>
           )}
@@ -153,7 +154,7 @@ export function Header() {
               </DropdownMenuItem>
               <DropdownMenuItem>Configuración</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Cerrar Sesión</DropdownMenuItem>
+              <DropdownMenuItem>Preferencias</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

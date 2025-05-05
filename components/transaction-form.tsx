@@ -33,6 +33,8 @@ import {
 import { cn } from "@/lib/utils"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ToastAction } from "@/components/ui/toast"
+import { useToast } from "@/hooks/use-toast"
 
 const transactionFormSchema = z.object({
   type: z.enum(["income", "expense", "credit"]),
@@ -117,6 +119,7 @@ export function TransactionForm() {
   const [showCustomInstallments, setShowCustomInstallments] = useState(false)
   const [customInstallments, setCustomInstallments] = useState<{ number: number; amount: string }[]>([])
   const [resizeObserverError, setResizeObserverError] = useState(false)
+  const { toast } = useToast()
 
   // Manejar el error de ResizeObserver
   useEffect(() => {
@@ -201,22 +204,84 @@ export function TransactionForm() {
     form.setValue("currency", newCurrency)
   }
 
-  function onSubmit(data: TransactionFormValues) {
+  async function onSubmit(data: TransactionFormValues) {
     setIsSubmitting(true)
-    console.log(data)
 
-    // Si es crédito con cuotas personalizadas, incluir esa información
-    if (data.type === "credit" && data.installmentType === "custom") {
-      console.log("Cuotas personalizadas:", customInstallments)
-    }
+    try {
+      // Crear un objeto de usuario ficticio para pruebas
+      const mockUser = {
+        id: "test-user-id",
+        name: "Usuario de Prueba",
+        email: "test@example.com",
+      }
 
-    // Simulación de envío
-    setTimeout(() => {
-      setIsSubmitting(false)
+      // Preparar los datos para enviar a la API
+      const transactionData = {
+        user_id: mockUser.id,
+        type: data.type,
+        amount: Number.parseFloat(data.amount),
+        currency: data.currency,
+        category: data.category,
+        date: data.date,
+        paymentMethod: data.paymentMethod,
+        description: data.description || "",
+      }
+
+      // Si es crédito, agregar campos adicionales
+      if (data.type === "credit") {
+        Object.assign(transactionData, {
+          interest: data.interest ? Number.parseFloat(data.interest) : 0,
+          installments: data.installments ? Number.parseInt(data.installments) : 1,
+          installmentType: data.installmentType || "equal",
+        })
+
+        // Si son cuotas personalizadas, incluir esa información
+        if (data.installmentType === "custom") {
+          Object.assign(transactionData, {
+            customInstallments: customInstallments,
+          })
+        }
+      }
+
+      // Enviar los datos a la API
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(transactionData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Error al guardar la transacción")
+      }
+
+      const result = await response.json()
+
+      // Mostrar mensaje de éxito
+      toast({
+        title: "¡Transacción registrada!",
+        description: `Se ha guardado correctamente la ${
+          data.type === "income" ? "entrada" : data.type === "expense" ? "salida" : "operación de crédito"
+        } por ${data.currency} ${data.amount}`,
+        action: <ToastAction altText="Cerrar">OK</ToastAction>,
+      })
+
+      // Resetear el formulario
       form.reset(defaultValues)
       setShowCustomInstallments(false)
       setCustomInstallments([])
-    }, 1000)
+    } catch (error) {
+      console.error("Error al guardar la transacción:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo guardar la transacción",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Formatear el monto con .00 si no tiene decimales
@@ -227,22 +292,8 @@ export function TransactionForm() {
     }
   }
 
-  // Determinar el color de fondo según el tipo de transacción
-  const getBackgroundColor = () => {
-    switch (transactionType) {
-      case "income":
-        return "bg-green-50 dark:bg-green-900/20"
-      case "expense":
-        return "bg-red-50 dark:bg-red-900/20"
-      case "credit":
-        return "bg-blue-50 dark:bg-blue-900/20"
-      default:
-        return ""
-    }
-  }
-
   return (
-    <Card className={cn(getBackgroundColor())}>
+    <Card>
       <CardHeader>
         <CardTitle>Registrar Transacción</CardTitle>
         <CardDescription>Añade un nuevo ingreso, gasto o crédito a tu registro financiero</CardDescription>

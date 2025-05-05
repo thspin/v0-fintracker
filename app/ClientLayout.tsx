@@ -3,7 +3,6 @@
 import type React from "react"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { usePathname } from "next/navigation"
 
 function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // Usamos un componente cliente para acceder a usePathname
@@ -12,13 +11,6 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
 // Componente cliente para usar hooks
 function ClientLayoutWrapper({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const isLoginPage = pathname === "/login"
-
-  if (isLoginPage) {
-    return children
-  }
-
   return (
     <div className="flex min-h-screen">
       <Sidebar />
