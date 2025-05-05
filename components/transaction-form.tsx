@@ -29,12 +29,22 @@ import {
   Smartphone,
   Zap,
   Bitcoin,
+  Wallet,
+  Building,
+  Landmark,
+  PiggyBank,
+  Banknote,
+  CreditCardIcon,
+  Coins,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToastAction } from "@/components/ui/toast"
 import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const transactionFormSchema = z.object({
   type: z.enum(["income", "expense", "credit"]),
@@ -47,6 +57,9 @@ const transactionFormSchema = z.object({
   }),
   date: z.string().min(1, {
     message: "La fecha es requerida.",
+  }),
+  account: z.string().min(1, {
+    message: "La cuenta es requerida.",
   }),
   paymentMethod: z.string().min(1, {
     message: "El método de pago es requerido.",
@@ -66,6 +79,7 @@ const defaultValues: Partial<TransactionFormValues> = {
   currency: "ARS",
   category: "",
   date: new Date().toISOString().split("T")[0],
+  account: "",
   paymentMethod: "",
   description: "",
   interest: "",
@@ -103,15 +117,27 @@ const categories = {
   ],
 }
 
+// Cuentas
+const accounts = [
+  { id: "cash", name: "Efectivo", icon: <Banknote className="h-5 w-5" /> },
+  { id: "bank-santander", name: "Santander", icon: <Building className="h-5 w-5" /> },
+  { id: "bank-bbva", name: "BBVA", icon: <Landmark className="h-5 w-5" /> },
+  { id: "bank-galicia", name: "Galicia", icon: <Building className="h-5 w-5" /> },
+  { id: "mercado-pago", name: "Mercado Pago", icon: <Wallet className="h-5 w-5" /> },
+  { id: "uala", name: "Ualá", icon: <Wallet className="h-5 w-5" /> },
+  { id: "binance", name: "Binance", icon: <Bitcoin className="h-5 w-5" /> },
+  { id: "investment-account", name: "Cuenta Comitente", icon: <PiggyBank className="h-5 w-5" /> },
+]
+
 // Métodos de pago
 const paymentMethods = [
-  { id: "cash", name: "Efectivo" },
-  { id: "debit", name: "Tarjeta de Débito" },
-  { id: "credit", name: "Tarjeta de Crédito" },
-  { id: "transfer", name: "Transferencia" },
-  { id: "qr", name: "Código QR" },
-  { id: "crypto", name: "Criptomoneda" },
-  { id: "other", name: "Otro" },
+  { id: "cash", name: "Efectivo", icon: <Banknote className="h-5 w-5" /> },
+  { id: "debit", name: "Débito", icon: <CreditCardIcon className="h-5 w-5" /> },
+  { id: "credit", name: "Crédito", icon: <CreditCard className="h-5 w-5" /> },
+  { id: "transfer", name: "Transferencia", icon: <Landmark className="h-5 w-5" /> },
+  { id: "qr", name: "Código QR", icon: <Smartphone className="h-5 w-5" /> },
+  { id: "crypto", name: "Cripto", icon: <Bitcoin className="h-5 w-5" /> },
+  { id: "other", name: "Otro", icon: <Coins className="h-5 w-5" /> },
 ]
 
 export function TransactionForm() {
@@ -119,6 +145,10 @@ export function TransactionForm() {
   const [showCustomInstallments, setShowCustomInstallments] = useState(false)
   const [customInstallments, setCustomInstallments] = useState<{ number: number; amount: string }[]>([])
   const [resizeObserverError, setResizeObserverError] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState<{ status: "idle" | "success" | "error"; message: string }>({
+    status: "idle",
+    message: "",
+  })
   const { toast } = useToast()
 
   // Manejar el error de ResizeObserver
@@ -206,6 +236,7 @@ export function TransactionForm() {
 
   async function onSubmit(data: TransactionFormValues) {
     setIsSubmitting(true)
+    setSubmitStatus({ status: "idle", message: "" })
 
     try {
       // Crear un objeto de usuario ficticio para pruebas
@@ -223,7 +254,8 @@ export function TransactionForm() {
         currency: data.currency,
         category: data.category,
         date: data.date,
-        paymentMethod: data.paymentMethod,
+        account: data.account,
+        payment_method: data.paymentMethod,
         description: data.description || "",
       }
 
@@ -232,7 +264,7 @@ export function TransactionForm() {
         Object.assign(transactionData, {
           interest: data.interest ? Number.parseFloat(data.interest) : 0,
           installments: data.installments ? Number.parseInt(data.installments) : 1,
-          installmentType: data.installmentType || "equal",
+          installment_type: data.installmentType || "equal",
         })
 
         // Si son cuotas personalizadas, incluir esa información
@@ -260,6 +292,13 @@ export function TransactionForm() {
       const result = await response.json()
 
       // Mostrar mensaje de éxito
+      setSubmitStatus({
+        status: "success",
+        message: `Se ha guardado correctamente la ${
+          data.type === "income" ? "entrada" : data.type === "expense" ? "salida" : "operación de crédito"
+        } por ${data.currency} ${data.amount}`,
+      })
+
       toast({
         title: "¡Transacción registrada!",
         description: `Se ha guardado correctamente la ${
@@ -274,6 +313,10 @@ export function TransactionForm() {
       setCustomInstallments([])
     } catch (error) {
       console.error("Error al guardar la transacción:", error)
+      setSubmitStatus({
+        status: "error",
+        message: error instanceof Error ? error.message : "No se pudo guardar la transacción",
+      })
       toast({
         variant: "destructive",
         title: "Error",
@@ -299,6 +342,22 @@ export function TransactionForm() {
         <CardDescription>Añade un nuevo ingreso, gasto o crédito a tu registro financiero</CardDescription>
       </CardHeader>
       <CardContent>
+        {submitStatus.status === "success" && (
+          <Alert className="mb-6 bg-green-50 text-green-800 border-green-200">
+            <CheckCircle className="h-4 w-4" />
+            <AlertTitle>¡Transacción registrada!</AlertTitle>
+            <AlertDescription>{submitStatus.message}</AlertDescription>
+          </Alert>
+        )}
+
+        {submitStatus.status === "error" && (
+          <Alert className="mb-6 bg-red-50 text-red-800 border-red-200" variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{submitStatus.message}</AlertDescription>
+          </Alert>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Tabs
@@ -393,24 +452,36 @@ export function TransactionForm() {
 
                   <FormField
                     control={form.control}
-                    name="paymentMethod"
+                    name="account"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Método de Pago</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} required>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona un método" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentMethods.map((method) => (
-                              <SelectItem key={method.id} value={method.id}>
-                                {method.name}
-                              </SelectItem>
+                        <FormLabel>Cuenta Destino</FormLabel>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                          >
+                            {accounts.map((account) => (
+                              <FormItem key={account.id} className="space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem
+                                    value={account.id}
+                                    id={`account-${account.id}`}
+                                    className="peer sr-only"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  htmlFor={`account-${account.id}`}
+                                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                >
+                                  {account.icon}
+                                  <span className="mt-2 text-xs font-normal">{account.name}</span>
+                                </FormLabel>
+                              </FormItem>
                             ))}
-                          </SelectContent>
-                        </Select>
+                          </RadioGroup>
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -528,24 +599,73 @@ export function TransactionForm() {
 
                   <FormField
                     control={form.control}
+                    name="account"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Origen</FormLabel>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                          >
+                            {accounts.map((account) => (
+                              <FormItem key={account.id} className="space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem
+                                    value={account.id}
+                                    id={`account-${account.id}-expense`}
+                                    className="peer sr-only"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  htmlFor={`account-${account.id}-expense`}
+                                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                >
+                                  {account.icon}
+                                  <span className="mt-2 text-xs font-normal">{account.name}</span>
+                                </FormLabel>
+                              </FormItem>
+                            ))}
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="paymentMethod"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Método de Pago</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} required>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona un método" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                          >
                             {paymentMethods.map((method) => (
-                              <SelectItem key={method.id} value={method.id}>
-                                {method.name}
-                              </SelectItem>
+                              <FormItem key={method.id} className="space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem
+                                    value={method.id}
+                                    id={`payment-${method.id}`}
+                                    className="peer sr-only"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  htmlFor={`payment-${method.id}`}
+                                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                >
+                                  {method.icon}
+                                  <span className="mt-2 text-xs font-normal">{method.name}</span>
+                                </FormLabel>
+                              </FormItem>
                             ))}
-                          </SelectContent>
-                        </Select>
+                          </RadioGroup>
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -567,10 +687,14 @@ export function TransactionForm() {
                           {categories.expense.map((category) => (
                             <FormItem key={category.id} className="space-y-0">
                               <FormControl>
-                                <RadioGroupItem value={category.id} id={category.id} className="peer sr-only" />
+                                <RadioGroupItem
+                                  value={category.id}
+                                  id={`category-${category.id}`}
+                                  className="peer sr-only"
+                                />
                               </FormControl>
                               <FormLabel
-                                htmlFor={category.id}
+                                htmlFor={`category-${category.id}`}
                                 className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
                               >
                                 {category.icon}
@@ -709,24 +833,73 @@ export function TransactionForm() {
 
                   <FormField
                     control={form.control}
+                    name="account"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Origen</FormLabel>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                          >
+                            {accounts.map((account) => (
+                              <FormItem key={account.id} className="space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem
+                                    value={account.id}
+                                    id={`account-${account.id}-credit`}
+                                    className="peer sr-only"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  htmlFor={`account-${account.id}-credit`}
+                                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                >
+                                  {account.icon}
+                                  <span className="mt-2 text-xs font-normal">{account.name}</span>
+                                </FormLabel>
+                              </FormItem>
+                            ))}
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="paymentMethod"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Método de Pago</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} required>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona un método" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                          >
                             {paymentMethods.map((method) => (
-                              <SelectItem key={method.id} value={method.id}>
-                                {method.name}
-                              </SelectItem>
+                              <FormItem key={method.id} className="space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem
+                                    value={method.id}
+                                    id={`payment-${method.id}-credit`}
+                                    className="peer sr-only"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  htmlFor={`payment-${method.id}-credit`}
+                                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                >
+                                  {method.icon}
+                                  <span className="mt-2 text-xs font-normal">{method.name}</span>
+                                </FormLabel>
+                              </FormItem>
                             ))}
-                          </SelectContent>
-                        </Select>
+                          </RadioGroup>
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -799,10 +972,14 @@ export function TransactionForm() {
                           {categories.credit.map((category) => (
                             <FormItem key={category.id} className="space-y-0">
                               <FormControl>
-                                <RadioGroupItem value={category.id} id={category.id} className="peer sr-only" />
+                                <RadioGroupItem
+                                  value={category.id}
+                                  id={`category-${category.id}-credit`}
+                                  className="peer sr-only"
+                                />
                               </FormControl>
                               <FormLabel
-                                htmlFor={category.id}
+                                htmlFor={`category-${category.id}-credit`}
                                 className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
                               >
                                 {category.icon}
@@ -836,7 +1013,7 @@ export function TransactionForm() {
 
             <Button
               type="submit"
-              className="w-full transition-all hover:scale-[1.02] active:scale-[0.98] animate-pulse"
+              className="w-full transition-all hover:scale-[1.02] active:scale-[0.98]"
               disabled={isSubmitting}
             >
               {isSubmitting ? "Guardando..." : "Guardar Transacción"}
