@@ -60,9 +60,7 @@
     "zod": "latest",
     "pg-native": "latest",
     "@supabase/supabase-js": "latest",
-    "pg": "latest",
-    "fs": "latest",
-    "path": "latest"
+    "pg": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

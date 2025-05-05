@@ -17,3 +17,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
   },
 })
+
+// Cliente para el servidor (usando la clave de servicio)
+export const createServerSupabase = () => {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
+}
