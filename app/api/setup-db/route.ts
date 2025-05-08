@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server"
-import { createServerSupabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
+
+// Inicializar el cliente de Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
 export async function GET() {
   try {
-    const supabase = createServerSupabase()
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Verificar si las tablas existen
     const { error: usersError } = await supabase.from("users").select("id").limit(1)
@@ -29,52 +33,91 @@ export async function GET() {
       })
     }
 
-    // Crear tablas una por una
-    const createTables = async () => {
-      // Crear tabla de usuarios
-      if (usersError) {
-        const { error } = await supabase.rpc("create_users_table")
-        if (error) console.error("Error al crear tabla users:", error)
-      }
+    // Crear tablas usando SQL directo a través de la API REST de Supabase
+    const response = await fetch(`${supabaseUrl}/rest/v1/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        query: `
+          -- Crear tabla de usuarios si no existe
+          CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
 
-      // Crear tabla de cuentas
-      if (accountsError) {
-        const { error } = await supabase.rpc("create_accounts_table")
-        if (error) console.error("Error al crear tabla accounts:", error)
-      }
+          -- Crear tabla de cuentas si no existe
+          CREATE TABLE IF NOT EXISTS accounts (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            balance DECIMAL(12, 2) NOT NULL DEFAULT 0,
+            currency VARCHAR(10) NOT NULL DEFAULT 'ARS',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
 
-      // Crear tabla de métodos de pago
-      if (paymentMethodsError) {
-        const { error } = await supabase.rpc("create_payment_methods_table")
-        if (error) console.error("Error al crear tabla payment_methods:", error)
-      }
+          -- Crear tabla de métodos de pago si no existe
+          CREATE TABLE IF NOT EXISTS payment_methods (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
 
-      // Crear tabla de transacciones
-      if (transactionsError) {
-        const { error } = await supabase.rpc("create_transactions_table")
-        if (error) console.error("Error al crear tabla transactions:", error)
-      }
+          -- Crear tabla de transacciones si no existe
+          CREATE TABLE IF NOT EXISTS transactions (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            amount DECIMAL(12, 2) NOT NULL,
+            currency VARCHAR(10) NOT NULL DEFAULT 'ARS',
+            category VARCHAR(100) NOT NULL,
+            date DATE NOT NULL,
+            account VARCHAR(100),
+            payment_method VARCHAR(100),
+            description TEXT,
+            interest DECIMAL(12, 2),
+            installments INTEGER,
+            installment_type VARCHAR(50),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
 
-      // Crear tabla de cuotas
-      if (installmentsError) {
-        const { error } = await supabase.rpc("create_installments_table")
-        if (error) console.error("Error al crear tabla installments:", error)
-      }
-    }
+          -- Crear tabla de cuotas para transacciones de crédito si no existe
+          CREATE TABLE IF NOT EXISTS installments (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            transaction_id UUID NOT NULL,
+            installment_number INTEGER NOT NULL,
+            amount DECIMAL(12, 2) NOT NULL,
+            due_date DATE NOT NULL,
+            status VARCHAR(50) NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+        `,
+      }),
+    })
 
-    // Intentar crear las tablas
-    try {
-      await createTables()
-    } catch (error) {
-      console.error("Error al crear tablas:", error)
-
-      // Si falla, intentar crear las tablas usando SQL en línea
-      return NextResponse.json({
-        success: false,
-        message: "Error al crear tablas usando RPC. Por favor, crea las tablas manualmente usando SQL.",
-        error: error instanceof Error ? error.message : "Error desconocido",
-        instructions: "Visita /api/setup-db/sql para ver el SQL necesario para crear las tablas.",
-      })
+    if (!response.ok) {
+      const errorData = await response.json()
+      return NextResponse.json(
+        {
+          error: "Error al crear tablas",
+          details: errorData,
+        },
+        { status: 500 },
+      )
     }
 
     // Insertar datos iniciales

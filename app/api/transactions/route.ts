@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server"
-import { createServerSupabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
+
+// Inicializar el cliente de Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
 export async function GET(request: Request) {
   try {
-    const supabase = createServerSupabase()
+    const supabase = createClient(supabaseUrl, supabaseKey)
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("userId")
     const type = searchParams.get("type")
@@ -36,7 +40,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabase()
+    const supabase = createClient(supabaseUrl, supabaseKey)
     const body = await request.json()
 
     console.log("Datos recibidos:", JSON.stringify(body, null, 2))
@@ -48,7 +52,7 @@ export async function POST(request: Request) {
 
     // Preparar los datos para insertar
     const transactionData = {
-      user_id: body.user_id || "00000000-0000-0000-0000-000000000000", // Usar un ID de usuario por defecto
+      user_id: body.user_id || "default-user", // Usar un ID de usuario por defecto si no se proporciona
       type: body.type,
       amount: body.amount,
       currency: body.currency || "ARS",
@@ -104,7 +108,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const supabase = createServerSupabase()
+    const supabase = createClient(supabaseUrl, supabaseKey)
     const body = await request.json()
 
     if (!body.id) {
@@ -175,7 +179,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const supabase = createServerSupabase()
+    const supabase = createClient(supabaseUrl, supabaseKey)
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
